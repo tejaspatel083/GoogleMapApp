@@ -13,6 +13,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.example.googlemapapp.DirectionHelpers.FetchURL;
+import com.example.googlemapapp.DirectionHelpers.TaskLoadedCallback;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdate;
@@ -23,6 +25,8 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
@@ -30,11 +34,14 @@ import com.google.android.gms.tasks.Task;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements TaskLoadedCallback {
 
 
     SupportMapFragment supportMapFragment;
     FusedLocationProviderClient client;
+    private Polyline currentPolyline;
+    private GoogleMap mMap;
+    private MarkerOptions currentLocation,destinationLocation;
 
     @BindView(R.id.buttonView)
     Button button;
@@ -50,27 +57,32 @@ public class MainActivity extends AppCompatActivity {
 
         client = LocationServices.getFusedLocationProviderClient(this);
 
+        if (ActivityCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+        {
+            getLocations();
+
+        }
+        else
+        {
+            ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},44);
+        }
 
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
-                if (ActivityCompat.checkSelfPermission(MainActivity.this,
-                        Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
-                {
-                    getCurrentLocation();
-                }
-                else
-                {
-                    ActivityCompat.requestPermissions(MainActivity.this,
-                            new String[]{Manifest.permission.ACCESS_FINE_LOCATION},44);
-                }
+                String url = getUrl(currentLocation.getPosition(),destinationLocation.getPosition(),"Driving");
+                new FetchURL(MainActivity.this).execute(url,"Driving");
+
+
             }
         });
 
     }
 
-    private void getCurrentLocation() {
+    private void getLocations() {
 
         Task<Location> task = client.getLastLocation();
         task.addOnSuccessListener(new OnSuccessListener<Location>() {
@@ -85,12 +97,20 @@ public class MainActivity extends AppCompatActivity {
 
                             LatLng latLng = new LatLng(location.getLatitude(),location.getLongitude());
 
-                            MarkerOptions markerOptions = new MarkerOptions().position(latLng)
+                            currentLocation = new MarkerOptions().position(latLng)
                                     .title("You are here");
+                            destinationLocation = new MarkerOptions().position(new LatLng(45.5057457017118, -73.63652848900087))
+                                    .title("Your Destination");
+
 
                             googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng,10));
 
-                            googleMap.addMarker(markerOptions);
+                            googleMap.addMarker(currentLocation);
+                            googleMap.addMarker(destinationLocation);
+
+//                            String url = getUrl(currentLocation.getPosition(),destinationLocation.getPosition(),"Driving");
+//                            new FetchURL(MainActivity.this).execute(url,"Driving");
+
                         }
                     });
                 }
@@ -113,8 +133,33 @@ public class MainActivity extends AppCompatActivity {
         {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)
             {
-                getCurrentLocation();
+                getLocations();
             }
         }
     }
+
+
+    private String getUrl(LatLng origin, LatLng dest, String directionMode) {
+        // Origin of route
+        String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
+        // Destination of route
+        String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+        // Mode
+        String mode = "mode=" + directionMode;
+        // Building the parameters to the web service
+        String parameters = str_origin + "&" + str_dest + "&" + mode;
+        // Output format
+        String output = "json";
+        // Building the url to the web service
+        String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters + "&key=" + getString(R.string.google_maps_key);
+        return url;
+    }
+
+    @Override
+    public void onTaskDone(Object... values) {
+        if (currentPolyline != null)
+            currentPolyline.remove();
+        currentPolyline = mMap.addPolyline((PolylineOptions) values[0]);
+    }
+
 }
